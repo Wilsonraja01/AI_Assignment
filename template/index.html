@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paraphrase Generator</title>
+</head>
+<body>
+    <h1>Paraphrase Generator</h1>
+    <form action="/paraphrase" method="post">
+        <label for="text">Enter the text to paraphrase:</label>
+        <input type="text" name="text" id="text" required>
+        <br>
+        <!-- Add other input fields here -->
+        <br>
+        <button type="submit">Generate</button>
+    </form>
+    <br>
+    {% if text %}
+        <p>Input Text: {{ text }}</p>
+        <p>Paraphrased Responses:</p>
+        <ul>
+            {% for response in paraphrased_responses %}
+                <li>{{ response }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+</body>
+</html>

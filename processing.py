@@ -1,11 +1,16 @@
-# file name: processing.py
+# pip install pyngrok==4.1.1
+# pip install flask_ngrok
 
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from flask import Flask, render_template, request, jsonify
-import mysql.connector
+from flask_ngrok import run_with_ngrok
 
 app = Flask(__name__, template_folder='template')
+run_with_ngrok(app)  # Start ngrok when the app is run
+
+# Global variable to store the latest paraphrased entry
+latest_entry = {'original_text': '', 'paraphrased_texts': []}
 
 def initialize_model(device="cuda"):
     tokenizer = AutoTokenizer.from_pretrained("chatgpt_paraphraser_on_T5_base")
@@ -36,7 +41,7 @@ def paraphrase(tokenizer, model, text, num_beams, num_beam_groups, num_return_se
         truncation=True,
     ).input_ids
 
-    input_ids = input_ids.to(model.device)
+    input_ids = input_ids.to(model.device)  # Ensure input_ids are on the same device as the model
 
     outputs = model.generate(
         input_ids, temperature=temperature, repetition_penalty=repetition_penalty,
@@ -48,30 +53,6 @@ def paraphrase(tokenizer, model, text, num_beams, num_beam_groups, num_return_se
     res = tokenizer.batch_decode(outputs, skip_special_tokens=True)
 
     return res
-
-# Function to initialize the database connection
-def initialize_database():
-    db_username = "wilson1"
-    db_password = "2004@w"
-    db_name = "paraphrase_ai"
-
-    connection = mysql.connector.connect(
-        host="localhost",
-        user=db_username,
-        password=db_password,
-        database=db_name
-    )
-
-    return connection
-
-# Function to insert data into the database
-def insert_into_database(connection, original_text, paraphrased_text):
-    cursor = connection.cursor()
-    sql = "INSERT INTO paraphrase_log (original_text, paraphrased_text) VALUES (%s, %s)"
-    val = (original_text, paraphrased_text)
-    cursor.execute(sql, val)
-    connection.commit()
-    cursor.close()
 
 @app.route('/')
 def index():
@@ -97,73 +78,56 @@ def paraphrase_endpoint():
         temperature, max_length
     )
 
-    # Insert data into the database
-    connection = initialize_database()
-    for response in paraphrased_responses:
-        insert_into_database(connection, text, response)
-    connection.close()
+    # Update the latest entry
+    global latest_entry
+    latest_entry = {'original_text': text, 'paraphrased_texts': paraphrased_responses}
 
-    # Render the template without returning JSON
     return render_template('index.html', text=text, paraphrased_responses=paraphrased_responses)
 
+# New route for API endpoint
 @app.route('/api/paraphrase', methods=['POST'])
-def paraphrase_api():
-    data = request.json
+def paraphrase_api_endpoint():
+    # Get the 'text' parameter from the request body
+    text = request.form.get('text', '')
 
-    text = data.get('text', '')
-    num_beams = int(data.get('num_beams', 5))
-    num_beam_groups = int(data.get('num_beam_groups', 5))
-    num_return_sequences = int(data.get('num_return_sequences', 5))
-    repetition_penalty = float(data.get('repetition_penalty', 10.0))
-    diversity_penalty = float(data.get('diversity_penalty', 3.0))
-    no_repeat_ngram_size = int(data.get('no_repeat_ngram_size', 2))
-    temperature = float(data.get('temperature', 0.7))
-    max_length = int(data.get('max_length', 128))
+    # Default values for other parameters
+    num_beams = 5
+    num_beam_groups = 5
+    num_return_sequences = 5
+    repetition_penalty = 10.0
+    diversity_penalty = 3.0
+    no_repeat_ngram_size = 2
+    temperature = 0.7
+    max_length = 128
 
+    # Call the paraphrase_input function
     paraphrased_responses = paraphrase_input(
         text, num_beams, num_beam_groups, num_return_sequences,
         repetition_penalty, diversity_penalty, no_repeat_ngram_size,
         temperature, max_length
     )
 
-    # Insert data into the database
-    connection = initialize_database()
-    for response in paraphrased_responses:
-        insert_into_database(connection, text, response)
-    connection.close()
+    # Update the latest entry
+    global latest_entry
+    latest_entry = {'original_text': text, 'paraphrased_texts': paraphrased_responses}
 
-    response_data = {
-        'input_text': text,
-        'paraphrased_responses': paraphrased_responses
-    }
+    # Return processed input and output in JSON format
+    return jsonify({'input_text': text, 'paraphrased_responses': paraphrased_responses})
 
-    return jsonify(response_data)
-
+# Route to get the latest paraphrase without using a database
 @app.route('/get_latest_paraphrase', methods=['GET'])
 def get_latest_paraphrase():
-    # Retrieve the latest entry from the database
-    connection = initialize_database()
-    cursor = connection.cursor(dictionary=True)
-    cursor.execute("SELECT original_text, paraphrased_text FROM paraphrase_log ORDER BY id DESC LIMIT 1")
-    
-    latest_entry = cursor.fetchone()
-    
-    if latest_entry:
-        # Fetch the first 5 paraphrased entries for the latest input text
-        cursor.execute("SELECT paraphrased_text FROM paraphrase_log WHERE original_text = %s LIMIT 6", (latest_entry['original_text'],))
-        paraphrases = cursor.fetchall()
+    global latest_entry
 
-        if paraphrases:
-            # Concatenate the first 5 paraphrased texts into one line
-            paraphrased_texts = '\n'.join(entry['paraphrased_text'] for entry in paraphrases)
+    if latest_entry['original_text']:
+        paraphrased_texts = '\n'.join(latest_entry['paraphrased_texts'])
+        return jsonify({
+            'input_text': latest_entry['original_text'],
+            'paraphrased_texts': paraphrased_texts
+        })
+    else:
+        return jsonify({'message': 'No paraphrased entries found'})
 
-            return jsonify({
-                'input_text': latest_entry['original_text'],
-                'paraphrased_text': paraphrased_texts
-            })
-    
-    connection.close()
-    return jsonify({'message': 'No paraphrased entries found'})
 
 if __name__ == '__main__':
     app.run()

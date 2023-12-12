@@ -4,32 +4,30 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	_ "github.com/go-sql-driver/mysql"
 	"io/ioutil"
 	"net/http"
 	"time"
-
-	_ "github.com/go-sql-driver/mysql"
 )
 
 type LatestParaphrase struct {
 	InputText       string `json:"input_text"`
-	ParaphrasedText string `json:"paraphrased_text"`
+	ParaphrasedText string `json:"paraphrased_texts"`
 }
 
 const (
+	apiUrl           = "http://localhost:5000/get_latest_paraphrase"
 	DatabaseUser     = "wilson1"
 	DatabasePass     = "2004@w"
 	DatabaseName     = "paraphrase_ai"
 	DatabaseTable    = "paraphrase_golang"
-	ConnectionString = DatabaseUser + ":" + DatabasePass + "@tcp(localhost:3306)/" + DatabaseName
 )
 
 func main() {
-	url := "http://localhost:5000/get_latest_paraphrase"
 	var prevResponse LatestParaphrase
 
-	// Open a database connection
-	db, err := sql.Open("mysql", ConnectionString)
+	// Open a connection to the database
+	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@/%s", DatabaseUser, DatabasePass, DatabaseName))
 	if err != nil {
 		fmt.Println("Error opening database:", err)
 		return
@@ -37,11 +35,12 @@ func main() {
 	defer db.Close()
 
 	for {
-		latestParaphrase, err := getLatestParaphrase(url)
+		latestParaphrase, err := getLatestParaphrase(apiUrl)
 		if err != nil {
 			fmt.Println("Error:", err)
 		} else {
-			if latestParaphrase.InputText != prevResponse.InputText {
+			if latestParaphrase.InputText != prevResponse.InputText ||
+				latestParaphrase.ParaphrasedText != prevResponse.ParaphrasedText {
 				fmt.Printf("Input: %s\n", latestParaphrase.InputText)
 				fmt.Printf("Output: %s\n\n", latestParaphrase.ParaphrasedText)
 
@@ -82,20 +81,20 @@ func getLatestParaphrase(url string) (*LatestParaphrase, error) {
 	return &latestParaphrase, nil
 }
 
-func insertIntoDatabase(db *sql.DB, inputText, outputText string) error {
+func insertIntoDatabase(db *sql.DB, input, output string) error {
 	// Prepare the SQL statement
-	stmt, err := db.Prepare("INSERT INTO " + DatabaseTable + " (input, output) VALUES (?, ?)")
+	stmt, err := db.Prepare("INSERT INTO " + DatabaseTable + "(input, output) VALUES (?, ?)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
-	// Execute the SQL statement
-	_, err = stmt.Exec(inputText, outputText)
+	// Execute the prepared statement
+	_, err = stmt.Exec(input, output)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("Inserted into database:", inputText, outputText)
+	fmt.Println("Inserted into database:", input, output)
 	return nil
 }

@@ -1,4 +1,4 @@
-# AI_Assignment
+# Real-time Paraphrase AI with Database Integration
  This is a Flask web application that leverages the Hugging Face Transformers library to perform text paraphrasing using a pre-trained model. Here's a brief explanation of the code:
 
 ## Model Initialization:

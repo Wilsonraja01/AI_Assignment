@@ -53,3 +53,5 @@ The code includes error handling to manage potential issues with HTTP requests, 
 
 ### Note:
 Ensure that the Flask application is running and accessible at http://localhost:5000 for this Go program to function correctly. Adjust database and connection details as needed.
+### Model Link:
+[humarin/chatgpt_paraphraser_on_T5_base](https://huggingface.co/humarin/chatgpt_paraphraser_on_T5_base)
